@@ -39,6 +39,7 @@ import importlib.util
 import re
 import copy
 from setproctitle import setproctitle
+from collections import deque
 
 #from crccheck.crc import Crc32
 from hashlib import blake2b
@@ -64,10 +65,6 @@ from read_ambe import readAMBE
 #Remap some words for certain languages
 from i8n_voice_map import voiceMap
 
-
-#MySQL
-from mysql_config import useMYSQL
-
 # Stuff for socket reporting
 import pickle
 # REMOVE LATER from datetime import datetime
@@ -83,12 +80,9 @@ from binascii import b2a_hex as ahex
 from AMI import AMI
 
 
-##from hmac import new as hmac_new, compare_digest
-##from hashlib import sha256, hash
-
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
+__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021, 2022'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP, Eric Craw KF7EEL'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -230,12 +224,12 @@ def make_stat_bridge(_tgid):
         
 
 def make_default_reflector(reflector,_tmout,system):
-    bridge = '#'+str(reflector)
+    bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
         make_single_reflector(bytes_3(reflector),_tmout, system)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
             bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -248,7 +242,7 @@ def make_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if str(tg) not in BRIDGES:
         make_single_bridge(bytes_3(tg),system,ts,_tmout)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
             bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -259,7 +253,7 @@ def make_static_tg(tg,ts,_tmout,system):
     
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    bridgetemp = []
+    bridgetemp = deque()
     try:
         for bridgesystem in BRIDGES[str(tg)]:
             if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
@@ -273,12 +267,12 @@ def reset_static_tg(tg,ts,_tmout,system):
         return
         
 def reset_default_reflector(reflector,_tmout,system):
-    bridge = '#'+str(reflector)
+    bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
         make_single_reflector(bytes_3(reflector),_tmout, system)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
             bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -288,7 +282,7 @@ def reset_default_reflector(reflector,_tmout,system):
             
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
-    _bridge = '#' + _tgid_s
+    _bridge = ''.join(['#',_tgid_s])
     #1 min timeout for echo
     if _tgid_s == '9990':
         _tmout = 1
@@ -320,7 +314,7 @@ def remove_bridge_system(system):
 def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
-    _remove_bridges = []
+    _remove_bridges = deque()
     for _bridge in BRIDGES:
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
@@ -370,7 +364,7 @@ def rule_timer_loop():
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
-    _remove_bridges = []
+    _remove_bridges = deque()
     for _bridge in BRIDGES:
         _bridge_stat = False
         _in_use = False
@@ -402,18 +396,19 @@ def kaReporting():
 #Write SUB_MAP to disk 
 def subMapWrite():
     try:
-        _fh = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'wb')
+        _fh = open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'wb')
         pickle.dump(SUB_MAP,_fh)
         _fh.close()
         logger.info('(SUBSCRIBER) Writing SUB_MAP to disk')
     except:
         logger.warning('(SUBSCRIBER) Cannot write SUB_MAP to file')
         
+
 #Subscriber Map trimmer loop
 def SubMapTrimmer():
     logger.debug('(SUBSCRIBER) Subscriber Map trimmer loop started')
     _sub_time = time()
-    _remove_list = []
+    _remove_list = deque()
     for _subscriber in SUB_MAP:
         if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
             _remove_list.append(_subscriber)
@@ -423,8 +418,6 @@ def SubMapTrimmer():
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
         subMapWrite()
  
-    
-        
 
 # run this every 10 seconds to trim stream ids
 def stream_trimmer_loop():
@@ -440,8 +433,13 @@ def stream_trimmer_loop():
                 # RX slot check
                 if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 5:
                     _slot['RX_TYPE'] = HBPF_SLT_VTERM
-                    logger.debug('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
-                        system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
+                    if 'loss' in _slot and 'packets' in _slot and _slot['packets']:
+                        loss = (_slot['loss'] / _slot['packets']) * 100
+                        logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f, LOSS: %.2f%%', \
+                            system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'],loss)
+                    else:
+                        logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
+                            system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
                 #Null stream_id - for loop control 
@@ -459,8 +457,8 @@ def stream_trimmer_loop():
         # OBP systems
         # We can't delete items from a dicationry that's being iterated, so we have to make a temporarly list of entrys to remove later
         if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-            remove_list = []
-            fin_list = []
+            remove_list = deque()
+            fin_list = deque()
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
@@ -481,15 +479,23 @@ def stream_trimmer_loop():
                             logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 (BCSQ)', \
                                 system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids))
                         else:
-                            logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
-                                system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
+                            if 'loss' in _stream and 'packets' in _stream and _stream['packets']:
+                                loss = _stream['loss'] / _stream['packets'] * 100
+                                #Only report this at INFO level if it has loss information as this will be a source
+                                #stream not a target stream
+                                #These represent streams where the stream has been lost - i.e. no TERM packet.
+                                logger.info('(%s) *TIME OUT - STREAM LOST*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f, Loss: %.2f%%', \
+                                    system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'],loss)
+                            else:
+                                logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
+                                    system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                             
                         if CONFIG['REPORTS']['REPORT']:
                                 systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_stream['RX_PEER']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                         systems[system].STATUS[stream_id]['_to'] = True
                         continue
-                except:
-                    logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
+                except Exception as e:
+                    logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id, exc_info=e)
                     systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
 
@@ -514,7 +520,7 @@ def stream_trimmer_loop():
                     removed = systems[system].STATUS.pop(stream_id)
                 
                     try:
-                        _bcsq_remove = []
+                        _bcsq_remove = deque()
                         for tgid in _sysconfig['_bcsq']:
                             if _sysconfig['_bcsq'][tgid] == stream_id:
                                 _bcsq_remove.append(tgid)
@@ -608,7 +614,7 @@ def playFileOnRequest(self,fileNumber):
     sleep(1)
     _say = []
     try:
-        _say.append(AMBEobj.readSingleFile('/'+_lang+'/ondemand/'+str(fileNumber)+'.ambe'))
+        _say.append(AMBEobj.readSingleFile(''.join(['/',_lang,'/ondemand/',str(fileNumber),'.ambe'])))
     except IOError:
         logger.warning('(%s) cannot read file for number %s',system,fileNumber)
         return
@@ -633,20 +639,16 @@ def threadIdent():
     logger.debug('(IDENT) starting ident thread')
     reactor.callInThread(ident)
     
-def threadedMysql():
-    logger.debug('(MYSQL) Starting MySQL thread')
-    reactor.callInThread(mysqlGetConfig)
-    
 def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
-def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids):
-    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids
+def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
+    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids
     
 def aliasb():
-    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids = mk_aliases(CONFIG)
-    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids)
+    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
+    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids)
 
 def ident():
     for system in systems:
@@ -665,11 +667,18 @@ def ident():
                 logger.debug("(IDENT) %s System has no peers or no recorded callsign (%s), skipping",system,_callsign)
                 continue
             _slot  = systems[system].STATUS[2]
-            #If slot is idle for RX and TX
-            #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
-            if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
-                #_stream_id = hex_str_4(1234567)
-                logger.info('(%s) System idle. Sending voice ident',system)
+            #If slot is idle for RX and TX for over 30 seconds
+            if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > 30 and time() - _slot['RX_TIME'] > 30):
+                _all_call = bytes_3(16777215)
+                _source_id= bytes_3(5000)
+
+                _dst_id = b''
+                
+                if 'OVERRIDE_IDENT_TG' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'] and int(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG']) > 0 and int(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'] < 16777215):
+                    _dst_id = bytes_3(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'])
+                else:
+                    _dst_id = _all_call
+                logger.info('(%s) %s System idle. Sending voice ident to TG %s',system,_callsign,get_alias(_dst_id,talkgroup_ids))
                 _say = [words[_lang]['silence']]
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
@@ -698,9 +707,9 @@ def ident():
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
-                _all_call = bytes_3(16777215)
-                _source_id= bytes_3(5000)
-                speech = pkt_gen(_source_id, _all_call, bytes_4(16777215), 1, _say)
+
+                _peer_id = CONFIG['GLOBAL']['SERVER_ID']
+                speech = pkt_gen(_source_id, _dst_id, _peer_id, 1, _say)
 
                 sleep(1)
                 _slot  = systems[system].STATUS[2]
@@ -714,11 +723,15 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                    reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_all_call,_slot)
+                    reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
 
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
+        if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
+            logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
+            remove_bridge_system(_system)
+            CONFIG['SYSTEMS'][_system]['_reset'] = False
         try:
             if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
                 continue
@@ -746,7 +759,13 @@ def options_config():
                         _options['TS1_STATIC'] = _options.pop('TS1')
                     if 'TS2' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2')
-                        
+                    if 'IDENTTG' in _options:
+                        _options['OVERRIDE_IDENT_TG'] = _options.pop('IDENTTG')
+                    elif 'VOICETG' in _options:
+                        _options['OVERRIDE_IDENT_TG'] = _options.pop('VOICETG')                         
+                    if 'IDENT' in _options:
+                        _options['VOICE'] = _options.pop('IDENT')
+                     
                     #DMR+ style options
                     if 'StartRef' in _options:
                         _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
@@ -755,39 +774,39 @@ def options_config():
                     if 'TS1_1' in _options:
                         _options['TS1_STATIC'] = _options.pop('TS1_1')
                         if 'TS1_2' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_2')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_2')])
                         if 'TS1_3' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_3')])
                         if 'TS1_4' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_4')])
                         if 'TS1_5' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_5')])
                         if 'TS1_6' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_6')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_6')])
                         if 'TS1_7' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_7')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_7')])
                         if 'TS1_8' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_8')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_8')])
                         if 'TS1_9' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_9')
-                    if 'TS2_2' in _options:
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_9')])
+                    if 'TS2_1' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2_1')
                         if 'TS2_2' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',', _options.pop('TS2_2')])
                         if 'TS2_3' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_3')])
                         if 'TS2_4' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_4')])
                         if 'TS2_5' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_5')])
                         if 'TS2_6' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_6')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_6')])
                         if 'TS2_7' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_7')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_7')])
                         if 'TS2_8' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_8')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_8')])
                         if 'TS2_9' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_9')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_9')])
 
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
@@ -800,6 +819,9 @@ def options_config():
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
+                    
+                    if 'OVERRIDE_IDENT_TG' not in _options:
+                        _options['OVERRIDE_IDENT_TG'] = False
                         
                     if 'DEFAULT_UA_TIMER' not in _options:
                         _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
@@ -808,9 +830,14 @@ def options_config():
                         CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
                         logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
                         
+                    if 'OVERRIDE_IDENT_TG' in _options and _options['OVERRIDE_IDENT_TG'] and (CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] != int(_options['OVERRIDE_IDENT_TG'])):
+                        CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] = int(_options['OVERRIDE_IDENT_TG'])
+                        logger.debug("(OPTIONS) %s - Setting OVERRIDE_IDENT_TG to %s",_system,CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'])
+                        
                     if 'LANG' in _options and _options['LANG'] in words and _options['LANG'] != CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] :
                         CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] = _options['LANG']
                         logger.debug("(OPTIONS) %s - Setting voice language to  %s",_system,CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'])
+                        
                         
                     if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
                         CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE']))
@@ -838,8 +865,13 @@ def options_config():
                             continue
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
-                        logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
+                        logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                         continue
+                    
+                    if isinstance(_options['OVERRIDE_IDENT_TG'], str) and not _options['OVERRIDE_IDENT_TG'].isdigit():
+                        logger.debug('(OPTIONS) %s - OVERRIDE_IDENT_TG is not an integer, ignoring',_system)
+                        continue
+                    
                     
                     if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
@@ -875,7 +907,8 @@ def options_config():
                         else:
                             logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
                             reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
-                            
+                    
+                    ts1 = []
                     if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
@@ -887,7 +920,6 @@ def options_config():
                                     continue
                                 tg = int(tg)
                                 reset_static_tg(tg,1,_tmout,_system)   
-                        ts1 = []
                         if _options['TS1_STATIC']:
                             ts1 = _options['TS1_STATIC'].split(',')
                             for tg in ts1:
@@ -895,15 +927,14 @@ def options_config():
                                     continue
                                 tg = int(tg)
                                 make_static_tg(tg,1,_tmout,_system)
-                                
+                    ts2 = []
                     if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
-                        ts2 = []
                         if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
                             ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
                             for tg in ts2:
-                                if not tg:
+                                if not tg or int(tg) == 0 or int(tg) >= 16777215:
                                     continue
                                 tg = int(tg)
                                 reset_static_tg(tg,2,_tmout,_system)
@@ -911,7 +942,7 @@ def options_config():
                         if _options['TS2_STATIC']:
                             ts2 = _options['TS2_STATIC'].split(',')
                             for tg in ts2:
-                                if not tg:
+                                if not tg or int(tg) == 0 or int(tg) >= 16777215:
                                     continue
                                 tg = int(tg)
                                 make_static_tg(tg,2,_tmout,_system)
@@ -920,336 +951,30 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
-        except Exception:
-            logger.exception('(OPTIONS) caught exception:')
+        except Exception as e:
+            logger.exception('(OPTIONS) caught exception: %s',e)
             continue
 
-def mysqlGetConfig():
-    logger.debug('(MYSQL) Periodic config check')
-    SQLGETCONFIG = {}
-    if sql.con():
-        logger.debug('(MYSQL) reading config from database')
-        try:
-            SQLGETCONFIG = sql.getConfig()
-        except:
-            logger.debug('(MYSQL) problem with SQL query, aborting')
-            sql.close()
-            return
-    else:
-        logger.debug('(MYSQL) problem connecting to SQL server, aborting')
-        sql.close()
-        return
-    
-    sql.close()
-    reactor.callFromThread(mysql_config_check,SQLGETCONFIG)
-    
-
-def mysql_config_check(SQLGETCONFIG):
-
-    SQLCONFIG = SQLGETCONFIG
-    for system in SQLGETCONFIG:
-        if system not in CONFIG['SYSTEMS']:
-            if SQLCONFIG[system]['ENABLED']:
-                logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
-                CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
-                systems[system] = routerHBP(system, CONFIG, report_server)
-                listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
-            else:
-                logger.debug('(MYSQL) new disabled system %s',system) 
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            #Do ACL processing
-        # Subscriber and TGID ACLs
-            logger.debug('(MYSQL) building ACLs')
-            # Registration ACLs
-            SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-            for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
-                SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
-            
-            #Add system to bridges
-            if SQLCONFIG[system]['ENABLED']:
-                logger.debug('(MYSQL) adding new system to static bridges')
-                for _bridge in BRIDGES:
-                    ts1 = False 
-                    ts2 = False
-                    for i,e in enumerate(BRIDGES[_bridge]):
-                        if e['SYSTEM'] == system and e['TS'] == 1:
-                            ts1 = True
-                        if e['SYSTEM'] == system and e['TS'] == 2:
-                            ts2 = True
-                    if _bridge[0:1] != '#':
-                        if ts1 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    else:
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-                
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                        logger.debug('(MYSQL) %s setting default reflector',system) 
-                        make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-                
-                if SQLCONFIG[system]['TS1_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                        
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-        
-            continue
-        
-        #Preserve options line
-        if 'OPTIONS' in CONFIG['SYSTEMS'][system]:
-            SQLCONFIG[system]['OPTIONS'] = CONFIG['SYSTEMS'][system]['OPTIONS']
-            SQLCONFIG[system]['TS1_STATIC'] = CONFIG['SYSTEMS'][system]['TS1_STATIC']
-            SQLCONFIG[system]['TS2_STATIC'] = CONFIG['SYSTEMS'][system]['TS2_STATIC']
-            SQLCONFIG[system]['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-            SQLCONFIG[system]['DEFAULT_REFLECTOR'] = CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']
-            
-            #logger.debug('(MYSQL) %s has HBP Options line - skipping',system)
-            #continue
-            
-        
-        if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener and removing from bridges',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            remove_bridge_system(system)
-            listeningPorts[system].stopListening()
-            
-        if CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s changed from disabled to enabled, starting HBP listener',system)
-            systems[system] = routerHBP(system, CONFIG, report_server)
-            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
-            logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
-            logger.debug('(MYSQL) adding new system to static bridges')
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            for _bridge in BRIDGES:
-                ts1 = False 
-                ts2 = False
-                for i,e in enumerate(BRIDGES[_bridge]):
-                    if e['SYSTEM'] == system and e['TS'] == 1:
-                        ts1 = True
-                    if e['SYSTEM'] == system and e['TS'] == 2:
-                        ts2 = True
-                if _bridge[0:1] != '#':
-                    if ts1 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    if ts2 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                else:
-                    if ts2 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-
-            
-            if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting default reflector',system) 
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-            
-            if SQLCONFIG[system]['TS1_STATIC']:
-                if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                        
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-                    
-        if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Updating bridges.',system)
-                remove_bridge_system(system)
-                for _bridge in BRIDGES:
-                    ts1 = False 
-                    ts2 = False
-                    _tmout = CONFIG['SYSTEMS'][system][DEFAULT_UA_TIMER]
-                    for i,e in enumerate(BRIDGES[_bridge]):
-                        if e['SYSTEM'] == system and e['TS'] == 1:
-                            ts1 = True
-                        if e['SYSTEM'] == system and e['TS'] == 2:
-                            ts2 = True
-                    if _bridge[0:1] != '#':
-                        if ts1 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    else:
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-
-                
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                  #  if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting default reflector',system) 
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-            
-                if SQLCONFIG[system]['TS1_STATIC']:
-                   # if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                            
-                    if SQLCONFIG[system]['TS2_STATIC']:
-                        logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                        ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                        for tg in ts2:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            make_static_tg(tg,2,_tmout,system)
-                
-
-        
-        if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['MAX_PEERS'] != CONFIG['SYSTEMS'][system]['MAX_PEERS'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s MAX_PEERS changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s Passphrase changed on enabled system. Kicking peers',system)
-            systems[system].master_dereg()
-            
-        if SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
-            if 'OPTIONS' not in SQLCONFIG[system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                    logger.debug('(MYSQL) %s default reflector changed, updating',system) 
-                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-                else:
-                    logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
-                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
-                
-        if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
-                ts1 = []
-                if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-                    ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        reset_static_tg(tg,1,_tmout,system)   
-                ts1 = []
-                if SQLCONFIG[system]['TS1_STATIC']:
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                    
-        if SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
-                ts2 = []
-                if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-                    ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        reset_static_tg(tg,2,_tmout,system)
-                ts2 = []
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-        
-        if SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'] != CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']:
-            logger.debug('(MYSQL) %s announcement language changed to %s',system, SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'])
-        
-        #Rebuild ACLs
-        SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-        SQLCONFIG[system]['SUB_ACL'] = acl_build(SQLCONFIG[system]['SUB_ACL'], ID_MAX)
-        SQLCONFIG[system]['TG1_ACL'] = acl_build(SQLCONFIG[system]['TG1_ACL'], ID_MAX)
-        SQLCONFIG[system]['TG2_ACL'] = acl_build(SQLCONFIG[system]['TG2_ACL'], ID_MAX)
-        
-        if SQLCONFIG[system]['REG_ACL'] != CONFIG['SYSTEMS'][system]['REG_ACL']:
-            logger.debug('(MYSQL) registration ACL changed')
-        if SQLCONFIG[system]['SUB_ACL'] != CONFIG['SYSTEMS'][system]['SUB_ACL']:
-            logger.debug('(MYSQL) subscriber ACL changed')
-        if SQLCONFIG[system]['TG1_ACL'] != CONFIG['SYSTEMS'][system]['TG1_ACL']:
-            logger.debug('(MYSQL) TG1 ACL changed')
-        if SQLCONFIG[system]['TG2_ACL'] != CONFIG['SYSTEMS'][system]['TG2_ACL']:
-            logger.debug('(MYSQL) TG2 ACL changed')
-            
-        #Preserve peers list
-        if system in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS'][system]['ENABLED'] and 'PEERS' in CONFIG['SYSTEMS'][system] :
-            SQLCONFIG[system]['PEERS'] = CONFIG['SYSTEMS'][system]['PEERS']
-            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system])
-        else:
-            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system]) 
-        
-                
-    #Add MySQL config data to config dict
-    #CONFIG['SYSTEMS'].update(SQLCONFIG)
-   
-    SQLCONFIG = {} 
 
 class routerOBP(OPENBRIDGE):
 
     def __init__(self, _name, _config, _report):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
+        
+    def get_rptr(self,_sid):
+        _int_peer_id = int_id(_sid)
+        if _int_peer_id in local_subscriber_ids:
+            return local_subscriber_ids[_int_peer_id]
+        elif _int_peer_id in subscriber_ids:
+            return subscriber_ids[_int_peer_id]
+        elif _int_peer_id in peer_ids:
+            return peer_ids[_int_peer_id]
+        else:
+            return _int_peer_id
+
                 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
@@ -1422,7 +1147,7 @@ class routerOBP(OPENBRIDGE):
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
 
                 # Transmit the packet to the destination system
-                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server)
+                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server, _source_rptr)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
@@ -1435,9 +1160,9 @@ class routerOBP(OPENBRIDGE):
         systems[_d_system].send_system(_tmp_data)
         logger.debug('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
-            systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            systems[_d_system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
         
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
 
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -1471,13 +1196,13 @@ class routerOBP(OPENBRIDGE):
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
-        systems[_target].send_system(_tmp_data,_hops,_ber,_rssi, _source_server)
+        systems[_target].send_system(_tmp_data,_hops,_ber,_rssi, _source_server, _source_rptr)
         logger.debug('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
-            systems[_target]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            systems[_target]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
         
         pkt_time = time()
         dmrpkt = _data[20:53]
@@ -1561,32 +1286,40 @@ class routerOBP(OPENBRIDGE):
 
             
             if _dtype_vseq == 3:
-                logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                logger.info('(%s) *UNIT CSBK* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s, SRC: %s, RPTR: %s', \
+                        self._system, int_id(_stream_id), self.get_rptr(_source_rptr), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, int_id(_source_server),int_id(_source_rptr))
                 if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT CSBK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT CSBK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 6:
-                logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s, SRC: %s, RPTR: %s', \
+                        self._system, int_id(_stream_id),self.get_rptr(_source_rptr), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),int_id(_source_rptr))
                 if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 7:
-                    logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s', \
+                            self._system, int_id(_stream_id), self.get_rptr(_source_rptr), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, int_id(_source_server),int_id(_source_rptr))
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 8:
-                    logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s, RPTR: %s, SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s', \
+                            self._system, int_id(_stream_id), self.get_rptr(_source_rptr), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),int_id(_source_rptr))
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             else:
-                    logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s, RPTR: %s, SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s', \
+                            self._system, int_id(_stream_id), self.get_rptr(_source_rptr), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),int_id(_source_rptr))
+            
+            #Send all data to DATA-GATEWAY if enabled and valid
+            if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
+                logger.debug('(%s) DATA packet sent to DATA-GATEWAY',self._system)
+                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr,_ber,_rssi)
+                 
             
             #Send other openbridges
             for system in systems:
                 if system  == self._system:
+                    continue
+                if system == 'DATA-GATEWAY':
                     continue
                 #We only want to send data calls to individual IDs via OpenBridge
                 #Only send if proto ver for bridge is > 1
@@ -1653,6 +1386,7 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False,
                     'RX_PEER': _peer_id,
                     'packets': 0,
+                    'loss': 0,
                     'crcs': set()
 
                 }
@@ -1665,13 +1399,13 @@ class routerOBP(OPENBRIDGE):
                 # If we don't have a voice header then don't wait to decode the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
                 else:
-                    self.STATUS[_stream_id]['LC'] = LC_OPT + _dst_id + _rf_src
+                    self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
+                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
+                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
@@ -1720,7 +1454,7 @@ class routerOBP(OPENBRIDGE):
                 hr_times = None
                 
                 if not fi:
-                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                     return
                 
                 if self._system != fi:             
@@ -1747,23 +1481,28 @@ class routerOBP(OPENBRIDGE):
                 #Handle inbound duplicates
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
-                    logger.info("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    self.STATUS[_stream_id]['loss'] += 1
+                    logger.debug("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
                 #Duplicate SEQ number
                 if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
-                    logger.info("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                    self.STATUS[_stream_id]['loss'] += 1
+                    logger.debug("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
-                    logger.info("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                    self.STATUS[_stream_id]['loss'] += 1
+                    logger.debug("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
                 #Duplicate DMR payload to previuos packet (by hash
                 if  _seq > 0 and _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.info("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
+                    self.STATUS[_stream_id]['loss'] += 1
+                    logger.debug("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s PACKETS: %s, LOSS: %.2f%% ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'],((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
-                    logger.info("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                    self.STATUS[_stream_id]['loss'] += 1
+                    logger.debug("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s , LOSS: %.2f%%",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
 
             
                 #Save this sequence number 
@@ -1784,22 +1523,24 @@ class routerOBP(OPENBRIDGE):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
             
-            _sysIgnore = []
+            _sysIgnore = deque()
             for _bridge in BRIDGES:
                     for _system in BRIDGES[_bridge]:
                         
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi)
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
 
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
                 packet_rate = 0
+                loss = 0.00
                 if call_duration:
                     packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate)
+                    loss = (self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s, Loss: %.2f%%', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate,loss)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                    self.STATUS[_stream_id]['_fin'] = True
@@ -1878,7 +1619,7 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
@@ -1998,7 +1739,7 @@ class routerHBP(HBSYSTEM):
                                 _target_status[_target['TS']]['TX_RFS'] = _rf_src
                                 _target_status[_target['TS']]['TX_PEER'] = _peer_id
                                 # Generate LCs (full and EMB) for the TX stream
-                                dst_lc = self.STATUS[_slot]['RX_LC'][0:3] + _target['TGID'] + _rf_src
+                                dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3],_target['TGID'],_rf_src])
                                 _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
@@ -2045,7 +1786,7 @@ class routerHBP(HBSYSTEM):
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server)
+                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
        
         return _sysIgnore
     
@@ -2057,10 +1798,12 @@ class routerHBP(HBSYSTEM):
         systems[_d_system].send_system(_tmp_data,None)
         logger.debug('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
-            systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            systems[_d_system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
  #       _sysIgnore = sysIgnore
+        _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
+        _source_rptr = _peer_id
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
         _target_system = self._CONFIG['SYSTEMS'][_target]
@@ -2094,10 +1837,10 @@ class routerHBP(HBSYSTEM):
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
-        systems[_target].send_system(_tmp_data,b'',_ber,_rssi,_source_server)
+        systems[_target].send_system(_tmp_data,b'',_ber,_rssi,_source_server,_source_rptr)
         logger.debug('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
-            systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            systems[system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -2110,6 +1853,8 @@ class routerHBP(HBSYSTEM):
         _bits = _data[15]
         
         _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
+        
+        _source_rptr = _peer_id
         
         #_pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = hash(_data).digest()
@@ -2159,36 +1904,43 @@ class routerHBP(HBSYSTEM):
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT CSBK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT CSBK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 6:
                 logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 7:
                     logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             elif _dtype_vseq == 8:
                     logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
             else:
                     logger.info('(%s) *UNKNOW TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
+            
+            #Send all data to DATA-GATEWAY if enabled and valid
+            if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
+                logger.debug('(%s) DATA packet sent to DATA-GATEWAY',self._system)
+                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
+                
             #Send to all openbridges 
             # sysIgnore = []
             for system in systems:
                 if system  == self._system:
                     continue
+                if system == 'DATA-GATEWAY':
+                    continue
                 #We only want to send data calls to individual IDs via FreeBridge (not OpenBridge)
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS'][system]['VER'] > 1 and (_int_dst_id >= 1000000):
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot)
-
-            
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
+                    
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
@@ -2290,7 +2042,7 @@ class routerHBP(HBSYSTEM):
                 
                 logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
-                    _bridgename = '#'+ str(_int_dst_id)
+                    _bridgename = ''.join(['#',str(_int_dst_id)])
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
@@ -2450,6 +2202,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
+                self.STATUS[_slot]['loss'] = 0
                 self.STATUS[_slot]['crcs'] = set()
                 
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
@@ -2464,7 +2217,7 @@ class routerHBP(HBSYSTEM):
                         logger.info('(%s) *DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                                 self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                         if CONFIG['REPORTS']['REPORT']:
-                            self._report.send_bridgeEvent('DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                            self._report.send_bridgeEvent('DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                     
                     else:
                         logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
@@ -2475,7 +2228,7 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('OTHER DATA,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('OTHER DATA,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -2485,7 +2238,7 @@ class routerHBP(HBSYSTEM):
                 # If we don't have a voice header then don't wait to decode it from the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
                 else:
-                    self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
+                    self.STATUS[_slot]['RX_LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
             #Create default bridge for unknown TG
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
@@ -2499,12 +2252,12 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) *VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('VCSBK 1/2 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                 elif _dtype_vseq == 8:
                     logger.info('(%s) *VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                     if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
             #Packet rate limit
             #Rate drop
@@ -2516,7 +2269,7 @@ class routerHBP(HBSYSTEM):
             #Timeout
             if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
                 if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
-                    logger.info("(%s) HBP * SOURCE TIMEOUT* STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    logger.info("(%s) HBP *SOURCE TIMEOUT* STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
                     self.STATUS[_slot]['LOOPLOG'] = True
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
@@ -2540,7 +2293,7 @@ class routerHBP(HBSYSTEM):
                             self.STATUS[_slot]['LOOPLOG'] = True
                         self.STATUS[_slot]['LAST'] = pkt_time
                         
-                        if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
+                        if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
                             systems[self._system].send_bcsq(_dst_id,_stream_id)
                             self.STATUS[_slot]['_bcsq'] = True
                         return
@@ -2548,53 +2301,60 @@ class routerHBP(HBSYSTEM):
             #Duplicate handling#
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
+                self.STATUS[_slot]['loss'] += 1
                 logger.info("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 return
             #Handle inbound duplicates
             if _seq and _seq == self.STATUS[_slot]['lastSeq']:
-                logger.info("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                self.STATUS[_slot]['loss'] += 1
+                logger.debug("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
-                logger.info("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                self.STATUS[_slot]['loss'] += 1
+                logger.debug("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Duplicate DMR payload to previuos packet (by hash)
             if _seq > 0 and _pkt_crc in self.STATUS[_slot]['crcs']:
-                logger.info("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
+                self.STATUS[_slot]['loss'] += 1
+                logger.debug("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
                 return
             #Inbound missed packets
             if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
-                logger.info("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                self.STATUS[_slot]['loss'] += 1
+                logger.debug("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
         
             #Save this sequence number 
             self.STATUS[_slot]['lastSeq'] = _seq
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
                           
-            _sysIgnore = []
+            _sysIgnore = deque()
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
                 if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi)
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
                         
                             #Send to reflector or TG too, if it exists
                             if _bridge[0:1] == '#':
                                 _bridge = _bridge[1:]
                             else:
-                                _bridge = '#'+_bridge
+                                _bridge = ''.join(['#',_bridge])
                             if _bridge in BRIDGES:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi)
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 packet_rate = 0
+                loss = 0.00
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
                 if call_duration:
                     packet_rate = self.STATUS[_slot]['packets'] / call_duration
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f,  Packet rate: %.2f/s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate)
+                    loss = (self.STATUS[_slot]['loss'] / self.STATUS[_slot]['packets']) * 100
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f,  Packet rate: %.2f/s, LOSS: %.2f%%', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate, loss)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                 
@@ -2703,12 +2463,12 @@ class bridgeReportFactory(reportFactory):
 
     def send_bridge(self):
         serialized = pickle.dumps(BRIDGES, protocol=2) #.decode("utf-8", errors='ignore')
-        self.send_clients(REPORT_OPCODES['BRIDGE_SND']+serialized)
+        self.send_clients(b''.join([REPORT_OPCODES['BRIDGE_SND'],serialized]))
 
     def send_bridgeEvent(self, _data):
         if isinstance(_data, str):
             _data = _data.decode('utf-8', error='ignore')
-        self.send_clients(REPORT_OPCODES['BRDG_EVENT']+_data)
+        self.send_clients(b''.join([REPORT_OPCODES['BRDG_EVENT'],_data]))
 
 
 #************************************************
@@ -2744,7 +2504,22 @@ if __name__ == '__main__':
     if not cli_args.CONFIG_FILE:
         cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/hblink.cfg'
 
-    # Call the external routine to build the configuration dictionary
+
+    #configP = False
+    #if os.path.isfile('config.pkl'):
+        #if os.path.getmtime('config.pkl') > (time() - 25):
+            #try:
+                #with open('config.pkl','rb') as _fh:
+                    #CONFIG = pickle.load(_fh)
+                    #print('(CONFIG) loaded config .pkl from previous shutdown')
+                    #configP = True
+            #except:
+                #print('(CONFIG) Cannot load config.pkl file')
+                #CONFIG = config.build_config(cli_args.CONFIG_FILE)
+        #else:
+            #os.unlink("config.pkl")
+    #else:
+    
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
 
     # Ensure we have a path for the rules file, if one wasn't specified, then use the default (top of file)
@@ -2755,40 +2530,15 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2020, 2021 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
-    
-    #If MySQL is enabled, read master config from MySQL too
-    if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        logger.info('(MYSQL) MySQL config enabled')
-        SQLCONFIG = {}
-        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],CONFIG['MYSQL']['TABLE'],logger)
-        #Run it once immediately
-        if sql.con():
-            logger.info('(MYSQL) reading config from database')
-            try:
-                SQLCONFIG = sql.getConfig()
-                #Add MySQL config data to config dict
-            except:
-                logger.warning('(MYSQL) problem with SQL query, aborting')
-            sql.close()
-            logger.debug('(MYSQL) building ACLs')
-            # Build ACLs
-            for system in SQLCONFIG:
-                SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-                for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
-                    SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
-            
-            CONFIG['SYSTEMS'].update(SQLCONFIG)
-        else:
-            logger.warning('(MYSQL) problem connecting to SQL server, aborting')
         
-        if CONFIG['ALLSTAR']['ENABLED']:
-            logger.info('(AMI) Setting up AMI: Server: %s, Port: %s, User: %s, Pass: %s, Node: %s',CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
-            
-            AMIOBJ = AMI(CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+    if CONFIG['ALLSTAR']['ENABLED']:
+        logger.info('(AMI) Setting up AMI: Server: %s, Port: %s, User: %s, Pass: %s, Node: %s',CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+        
+        AMIOBJ = AMI(CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
             
 
     # Set up the signal handler
@@ -2805,7 +2555,7 @@ if __name__ == '__main__':
         signal.signal(sig, sig_handler)
 
     # Create the name-number mapping dictionaries
-    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids = mk_aliases(CONFIG)
+    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids = mk_aliases(CONFIG)
     
     #Add special IDs to DB
     subscriber_ids[900999] = 'D-APRS'
@@ -2814,6 +2564,7 @@ if __name__ == '__main__':
     CONFIG['_SUB_IDS'] = subscriber_ids
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
+    CONFIG['_SERVER_IDS'] = server_ids
     
     
     
@@ -2826,8 +2577,22 @@ if __name__ == '__main__':
     except (ImportError, FileNotFoundError):
         sys.exit('(ROUTER) TERMINATING: Routing bridges file not found or invalid: {}'.format(cli_args.RULES_FILE))
 
-    # Build the routing rules file
-    BRIDGES = make_bridges(rules_module.BRIDGES)
+    #Load pickle of bridges if it's less than 25 seconds old 
+    #if os.path.isfile('bridge.pkl'):
+        #if os.path.getmtime('config.pkl') > (time() - 25):
+            #try:
+                #with open('bridge.pkl','rb') as _fh:
+                    #BRIDGES = pickle.load(_fh)
+                    #logger.info('(BRIDGE) loaded bridge.pkl from previous shutdown')
+            #except:
+                #logger.warning('(BRIDGE) Cannot load bridge.pkl file')
+                #BRIDGES = make_bridges(rules_module.BRIDGES)
+        #else:
+            #BRIDGES = make_bridges(rules_module.BRIDGES)
+        #os.unlink("bridge.pkl")
+    #else:
+    
+    BRIDGES = make_bridges(rules_module.BRIDGES) 
     
     #Subscriber map for unit calls - complete with test entry
     #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
@@ -2836,7 +2601,7 @@ if __name__ == '__main__':
     
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
         try:
-            with open(CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
+            with open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
                 SUB_MAP = pickle.load(_fh)
         except:
             logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
@@ -2848,12 +2613,12 @@ if __name__ == '__main__':
     
     #Generator
     generator = {}
-    systemdelete = []
+    systemdelete = deque()
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
-                    _systemname = system+'-'+str(count)
+                    _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
                     generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
                     generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={};LANG={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']), generator[_systemname]['ANNOUNCEMENT_LANGUAGE'])
@@ -2974,13 +2739,6 @@ if __name__ == '__main__':
     options_task = task.LoopingCall(options_config)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
-    
-    #Mysql config checker
-    #This runs in a thread so as not to block the reactor
-    if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        mysql_task = task.LoopingCall(threadedMysql)
-        mysql = mysql_task.start(33)
-        mysql.addErrback(loopingErrHandle)
         
     #STAT trimmer - once every hour (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

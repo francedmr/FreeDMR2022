@@ -62,6 +62,8 @@ import ssl
 from os.path import isfile, getmtime
 from urllib.request import urlopen
 
+import csv
+
 
 logging.TRACE = 5
 logging.addLevelName(logging.TRACE, 'TRACE')
@@ -70,7 +72,7 @@ logging.trace = partial(logging.log, logging.TRACE)
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
+__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021,2022'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -89,7 +91,7 @@ def config_reports(_config, _factory):
     logger.info('(GLOBAL) HBlink TCP reporting server configured')
 
     report_server = _factory(_config)
-    report_server.clients = []
+    report_server.clients = deque()
     reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
 
     reporting = task.LoopingCall(reporting_loop, logger, report_server)
@@ -127,6 +129,22 @@ class OPENBRIDGE(DatagramProtocol):
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
 
+    def validate_id(self,_peer_id):
+                
+        _int_peer_id = int_id(_peer_id)
+        _int_peer_id = int(_int_peer_id)
+        _subscriber_ids = self._CONFIG['_SUB_IDS']
+        _peer_ids = self._CONFIG['_PEER_IDS']
+        _local_subscriber_ids = self._CONFIG['_LOCAL_SUBSCRIBER_IDS']
+        
+        if _int_peer_id in _local_subscriber_ids:
+            return _local_subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _subscriber_ids:
+            return _subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _peer_ids:
+            return _peer_ids[_int_peer_id]
+        else:
+            return False
             
     def loopingErrHandle(self,failure):
         logger.error('(GLOBAL - hblink.py) Unhandled error in timed loop.\n %s', failure)
@@ -149,7 +167,7 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00'):                      
+    def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
@@ -161,8 +179,17 @@ class OPENBRIDGE(DatagramProtocol):
             
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
+            
+            if 'VER' in self._config and self._config['VER'] > 4:
+                _ver = VER.to_bytes(1,'big')
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _source_rptr, _hops])
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h.digest()
+                _packet = b''.join([_packet, _hash])
+                self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
 
-            if 'VER' in self._config and self._config['VER'] > 3:
+            elif 'VER' in self._config and self._config['VER'] == 4:
                 _ver = VER.to_bytes(1,'big')
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _hops])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
@@ -229,16 +256,14 @@ class OPENBRIDGE(DatagramProtocol):
             
     def send_bcve(self):
         if self._config['ENHANCED_OBP'] and self._config['TARGET_IP']:
-            _packet = BCVE + VER.to_bytes(1,'big')
+            _packet = b''.join([BCVE,VER.to_bytes(1,'big')])
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             logger.trace('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
         else:
             logger.trace('(%s) *BridgeControl* not sending BCVE, TARGET_IP currently not known',self._system) 
-            
-    
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
         pass
         #print(int_id(_peer_id), int_id(_rf_src), int_id(_dst_id), int_id(_seq), _slot, _call_type, _frame_type, repr(_dtype_vseq), int_id(_stream_id))
 
@@ -262,8 +287,20 @@ class OPENBRIDGE(DatagramProtocol):
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
+                    
+                    #This is a v1 packet, so all the extended stuff we can set to default
+                    #We are the source server if traffic came over a v1 bridge - sysops are responsible
+                    #for bridged in traffic from their system
+                    _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
+                    _source_rptr = b'\x00\x00\x00\x00'
+                    _ber = b'\x00'
+                    _rssi = b'\x00'
+                    _hops = b''
+                    
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
@@ -297,7 +334,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Low-level TG filtering 
                     if _call_type != 'unit':
                         _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or (_int_dst_id >= 92 and _int_dst_id <= 199)  or _int_dst_id == 900999:
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -333,7 +370,7 @@ class OPENBRIDGE(DatagramProtocol):
                             return
 
                     # Userland actions -- typically this is the function you subclass for an application
-                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops,_source_server,_ber,_rssi,_source_rptr)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
                     #Other end may not have enabled ENAHNCED_OBP
                     self._config['_bcka'] = time()
@@ -346,25 +383,46 @@ class OPENBRIDGE(DatagramProtocol):
                return
            
             elif _packet[:4] == DMRE:
-                _data = _packet[:53]
-                _ber = _packet[53:54]
-                _rssi = _packet[54:55]
-                _embedded_version  = _packet[55]
-                self._config['VER'] = _embedded_version
-                _timestamp = _packet[56:64]
-                _source_server = _packet[64:68]
-                _hops = _packet[68]
-                _hash = _packet[69:85]
-                #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
-                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                _h.update(_packet[:69])
+                
+                if _packet[55] > 4:
+                    _data = _packet[:53]
+                    _ber = _packet[53:54]
+                    _rssi = _packet[54:55]
+                    _embedded_version  = _packet[55]
+                    self._config['VER'] = _embedded_version
+                    _timestamp = _packet[56:64]
+                    _source_server = _packet[64:68]
+                    _source_rptr = _packet[68:72]
+                    _hops = _packet[72]
+                    _hash = _packet[73:89]
+                    #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                    _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                    _h.update(_packet[:73])
+                else:
+                    _data = _packet[:53]
+                    _ber = _packet[53:54]
+                    _rssi = _packet[54:55]
+                    _embedded_version  = _packet[55]
+                    self._config['VER'] = _embedded_version
+                    _timestamp = _packet[56:64]
+                    _source_server = _packet[64:68]
+                    _source_rptr = b'\x00\x00\x00\x00'
+                    _hops = _packet[68]
+                    _hash = _packet[69:85]
+                    #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                    _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                    _h.update(_packet[:69])
                     
                 _ckhs = _h.digest()
+                
+                _stream_id = _data[16:20]
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
                     _seq = _data[4]
                     _rf_src = _data[5:8]
@@ -381,7 +439,6 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
@@ -393,13 +450,28 @@ class OPENBRIDGE(DatagramProtocol):
                         
                     #Discard old packets
                     if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
-                        logger.warning('(%s) Packet more than 5s old!, discarding', self._system)
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
                         return
                     
                     #Discard bad source server 
-                    if (len(str(int.from_bytes(_source_server,'big'))) > 5) or (len(str(int.from_bytes(_source_server,'big'))) < 4) and int.from_bytes(_source_server,'big') > 0:
+                    if ((len(str(int.from_bytes(_source_server,'big'))) < 4) or (len(str(int.from_bytes(_source_server,'big'))) > 7)):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Source Server should be 4 or 5 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            logger.warning('(%s) Source Server should be  between 4 and 7 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
+                        return
+                    elif self._CONFIG['GLOBAL']['VALIDATE_SERVER_IDS'] and (len(str(int.from_bytes(_source_server,'big'))) == 4 or (len(str(int.from_bytes(_source_server,'big'))) == 5))  and ((str(int.from_bytes(_source_server,'big'))[:4]) not in self._CONFIG['_SERVER_IDS'] ):
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Source Server ID is 4 or 5 digits but not in list: %s', self._system, int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
+                        return
+                    elif len(str(int.from_bytes(_source_server,'big'))) > 5 and not self.validate_id(_source_server):
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Source Server 6 or 7 digits but not a valid DMR ID, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
                             self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
@@ -408,7 +480,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _inthops = _hops +1 
                     
                     if _inthops > 10:
-                        logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s', self._system, _inthops, _int_dst_id)
+                        logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s, SRC: %s', self._system, _inthops, _int_dst_id, int.from_bytes(_source_server,'big'))
                         self.send_bcsq(_dst_id,_stream_id)
                         return
                     
@@ -455,7 +527,7 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     _hops = _inthops.to_bytes(1,'big')
                     # Userland actions -- typically this is the function you subclass for an application
-                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops,_source_server,_ber,_rssi)
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops,_source_server,_ber,_rssi,_source_rptr)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
                     #Other end may not have enabled ENAHNCED_OBP
                     self._config['_bcka'] = time()
@@ -481,7 +553,9 @@ class OPENBRIDGE(DatagramProtocol):
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
                     _seq = _data[4]
                     _rf_src = _data[5:8]
@@ -695,7 +769,7 @@ class HBSYSTEM(DatagramProtocol):
     # Aliased in __init__ to maintenance_loop if system is a master
     def master_maintenance_loop(self):
         logger.debug('(%s) Master maintenance loop started', self._system)
-        remove_list = []
+        remove_list = deque()
         for peer in self._peers:
             _this_peer = self._peers[peer]
             # Check to see if any of the peers have been quiet (no ping) longer than allowed
@@ -703,6 +777,8 @@ class HBSYSTEM(DatagramProtocol):
                 remove_list.append(peer)
         for peer in remove_list:
             logger.info('(%s) Peer %s (%s) has timed out and is being removed', self._system, self._peers[peer]['CALLSIGN'], self._peers[peer]['RADIO_ID'])
+            #First, MSTCL the peer
+            self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
         if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
@@ -710,8 +786,10 @@ class HBSYSTEM(DatagramProtocol):
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                 self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
+                self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
             else:
                 del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                w
                 logger.info('(%s) Deleting HBP Options',self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
@@ -748,7 +826,7 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr_errback(self,failure):
         logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
-    def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
+    def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
         for _peer in self._peers:
             if len(_packet) < 54:
                 _packet =b''.join([_packet,_ber,_rssi])
@@ -762,7 +840,7 @@ class HBSYSTEM(DatagramProtocol):
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
-    def send_master(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
+    def send_master(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00',source_rptr = b'\x00\x00\x00\x00'):
         if _packet[:4] == DMRD:
             if len(_packet) < 54:
                 _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:],_ber,_rssi])
@@ -801,11 +879,11 @@ class HBSYSTEM(DatagramProtocol):
 
     def master_dereg(self):
         for _peer in self._peers:
-            self.send_peer(_peer, MSTCL + _peer)
+            self.send_peer(_peer, b''.join([MSTCL,_peer]))
             logger.info('(%s) De-Registration sent to Peer: %s (%s)', self._system, self._peers[_peer]['CALLSIGN'], self._peers[_peer]['RADIO_ID'])
 
     def peer_dereg(self):
-        self.send_master(RPTCL + self._config['RADIO_ID'])
+        self.send_master(b''.join([RPTCL,self._config['RADIO_ID']]))
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
     def proxy_IPBlackList(self,peer_id,sockaddr):
@@ -1008,9 +1086,11 @@ class HBSYSTEM(DatagramProtocol):
                         if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                             logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
+                            self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
                         else:
                             logger.info('(%s) Deleting HBP Options',self._system)
                             del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                            self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
                     
             else:
                 _peer_id = _data[4:8]      # Configure Command
@@ -1303,9 +1383,9 @@ class reportFactory(Factory):
 def try_download(_path, _file, _url, _stale,):
     no_verify = ssl._create_unverified_context()
     now = time()
-    file_exists = isfile(_path+_file) == True
+    file_exists = isfile(''.join([_path,_file])) == True
     if file_exists:
-        file_old = (getmtime(_path+_file) + _stale) < now
+        file_old = (getmtime(''.join([_path,_file])) + _stale) < now
     if not file_exists or (file_exists and file_old):
         try:
             with urlopen(_url, context=no_verify) as response:
@@ -1315,21 +1395,44 @@ def try_download(_path, _file, _url, _stale,):
             result = 'ID ALIAS MAPPER: \'{}\' successfully downloaded'.format(_file)
         except IOError:
             result = 'ID ALIAS MAPPER: \'{}\' could not be downloaded due to an IOError'.format(_file)
-        try:
-            with open(_path+_file, 'wb') as outfile:
-                outfile.write(data)
-                outfile.close()
-        except IOError:
-            result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+        else:
+            if data and (data != b'{}'):
+                try:
+                    with open(''.join([_path,_file]), 'wb') as outfile:
+                        outfile.write(data)
+                        outfile.close()
+                except IOError:
+                    result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+            else:
+                result = 'ID ALIAS mapper \'{}\' file not written because downloaded data is empty for some reason'.format(_file)
+                
     else:
         result = 'ID ALIAS MAPPER: \'{}\' is current, not downloaded'.format(_file)
     
     return result
 
+#Read list of listed servers from CSV (actually TSV) file 
+def mk_server_dict(path,filename):
+    server_ids = {}
+    try:
+        with open(''.join([path,filename]),newline='') as csvfile:
+            reader = csv.DictReader(csvfile,dialect='excel-tab')
+            for _row in reader:
+                server_ids[_row['OPB Net ID']] = _row['Country']
+        return(server_ids)
+    except IOError as err:
+        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',filename,err)
+        return(False)
+
 
 # ID ALIAS CREATION
 # Download
 def mk_aliases(_config):
+    peer_ids = {}
+    subscriber_ids = {}
+    local_subscriber_ids = {}
+    talkgroup_ids = {}
+    server_ids = {}
     if _config['ALIASES']['TRY_DOWNLOAD'] == True:
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
@@ -1340,32 +1443,53 @@ def mk_aliases(_config):
         #Try updating tgid aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'], _config['ALIASES']['TGID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
+        #Try updating server ids file
+        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
+        logger.info('(ALIAS) %s', result)
         
-
     # Make Dictionaries
-    peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
-    if peer_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
+    try:
+        peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
+    except Exception as e:
+        logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in peer_ids dictionary, not updating: %s',e)
+    else:
+        if peer_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
 
-    subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
-    #Add special IDs to DB
-    subscriber_ids[900999] = 'D-APRS'
-    subscriber_ids[4294967295] = 'SC'
+    try:
+        subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
+    else:
+        #Add special IDs to DB
+        subscriber_ids[900999] = 'D-APRS'
+        subscriber_ids[4294967295] = 'SC'
 
-    if subscriber_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
-
-    talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
-    if talkgroup_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
+        if subscriber_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+    try:
+        talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
+    else:
+        if talkgroup_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
+    try:   
+        local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
+    else:
+        if subscriber_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
+    try:        
+        server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
+    if server_ids:
+        logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
         
-    local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
-    if subscriber_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
-    
         
-        
-    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids
+    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
 
 
 #************************************************

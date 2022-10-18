@@ -128,7 +128,6 @@ def build_config(_config_file):
     CONFIG['LOGGER'] = {}
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
-    CONFIG['MYSQL'] = {}
     CONFIG['ALLSTAR'] = {}
 
     try:
@@ -146,7 +145,9 @@ def build_config(_config_file):
                     'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES'),
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
                     'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
-                    'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big')
+                    'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big'),
+                    'DATA_GATEWAY': config.getboolean(section, 'DATA_GATEWAY'),
+                    'VALIDATE_SERVER_IDS': config.getboolean(section, 'VALIDATE_SERVER_IDS')
                     
                 })
                 if not CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES']:
@@ -182,19 +183,12 @@ def build_config(_config_file):
                     'TGID_URL': config.get(section, 'TGID_URL'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS') * 86400,
                     'SUB_MAP_FILE': config.get(section, 'SUB_MAP_FILE'),
-                    'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE')
+                    'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE'),
+                    'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL'),
+                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE')
+                    
                 })
                 
-            elif section == 'MYSQL':
-                CONFIG['MYSQL'].update({
-                    'USE_MYSQL': config.getboolean(section, 'USE_MYSQL'),
-                    'USER': config.get(section, 'USER'),
-                    'PASS': config.get(section, 'PASS'),
-                    'DB': config.get(section, 'DB'),
-                    'SERVER': config.get(section, 'SERVER'),
-                    'PORT': config.getint(section,'PORT'),
-                    'TABLE': config.get(section, 'TABLE')
-            })
                 
             elif section == 'ALLSTAR':
                 CONFIG['ALLSTAR'].update({
@@ -205,8 +199,9 @@ def build_config(_config_file):
                     'PORT': config.getint(section,'PORT'),
                     'NODE' : config.getint(section,'NODE')
             })
-            
                 
+            elif section == 'PROXY':
+                pass
 
             elif config.getboolean(section, 'ENABLED'):
                 if config.get(section, 'MODE') == 'PEER':
@@ -328,7 +323,8 @@ def build_config(_config_file):
                         'GENERATOR': config.getint(section, 'GENERATOR'),
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
                         'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID'),
-                        'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL')
+                        'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL'),
+                        'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
