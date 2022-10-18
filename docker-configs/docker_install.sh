@@ -33,8 +33,9 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE
+ANNOUNCEMENT_LANGUAGES:
 SERVER_ID: 0
+DATA_GATEWAY: False
 
 [REPORTS]
 REPORT: True
@@ -54,10 +55,13 @@ PATH: ./
 PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
-PEER_URL: http://france-dmr.fr/static/rptrs.json
-SUBSCRIBER_URL: http://france-dmr.fr/static/users.json
-TGID_URL: TGID_URL: http://france-dmr.fr/static/talkgroup_ids.json
-STALE_DAYS: 7
+PEER_URL: https://www.france-dmr.fr/static/rptrs.json
+SUBSCRIBER_URL: https://www.france-dmr.fr/static/users.json
+TGID_URL: TGID_URL: http://www.france-dmr.fr/static/talkgroup_ids.json
+STALE_DAYS: 1
+SERVER_ID_URL: http://www.france-dmr.fr/static/FreeDMR_Hosts.csv
+SERVER_ID_FILE: server_ids.tsv
+
 
 #Control server shared allstar instance via dial / AMI
 [ALLSTAR]
@@ -103,7 +107,7 @@ MAX_PEERS: 1
 EXPORT_AMBE: False
 IP: 127.0.0.1
 PORT: 54000
-PASSPHRASE: passw0rd
+PASSPHRASE:passw0rd
 GROUP_HANGTIME: 5
 USE_ACL: True
 REG_ACL: DENY:1
@@ -131,11 +135,11 @@ MASTER_PORT: 54915
 PASSPHRASE: passw0rd
 CALLSIGN: ECHO
 RADIO_ID: 1000001
-RX_FREQ: 0
-TX_FREQ: 0
-TX_POWER: 0
+RX_FREQ: 449000000
+TX_FREQ: 444000000
+TX_POWER: 25
 COLORCODE: 1
-SLOTS: 2
+SLOTS: 1
 LATITUDE: 00.0000
 LONGITUDE: 000.0000
 HEIGHT: 0
@@ -151,7 +155,6 @@ SUB_ACL: DENY:1
 TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 ANNOUNCEMENT_LANGUAGE: fr_FR
-EOF
 
 echo Install rules.py ...
 echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/freedmr/rules.py &&
@@ -174,7 +177,7 @@ echo Set to restart on boot and when it dies...
 docker update --restart unless-stopped freedmr &&
 
 echo Download update script for future use...
-curl https://raw.github.com/francedmr/FreeDMR_Install/master/docker-configs/update_freedmr.sh -o update_freedmr.sh &&
+curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/update_freedmr.sh -o update_freedmr.sh &&
 chmod 700 ./update_freedmr.sh
 
 echo FreeDMR setup complete!

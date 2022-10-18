@@ -2,7 +2,6 @@
 #
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
-# Copyright (C) 2021 Frederic BONNET, FR86FB <france-dmr.fr>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -22,30 +21,52 @@
 echo FreeDMR Docker installer...
 
 echo Installing required packages...
-apt-get -y install docker.io && 
+echo Install Docker Community Edition...
+apt-get -y remove docker docker-engine docker.io &&
+apt-get -y update &&
+apt-get -y install apt-transport-https ca-certificates curl gnupg2 software-properties-common &&
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add - &&
+ARCH=`/usr/bin/arch`
+echo "System architecture is $ARCH" 
+if [ "$ARCH" == "x86_64" ]
+then
+    ARCH="amd64"
+fi
+add-apt-repository \
+   "deb [arch=$ARCH] https://download.docker.com/linux/debian \
+   $(lsb_release -cs) \
+   stable" &&
+apt-get -y update &&
+apt-get -y install docker-ce &&
+
+echo Install Docker Compose...
 apt-get -y install docker-compose &&
-apt-get -y  install conntrack &&
 
 echo Set userland-proxy to false...
-echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
+cat <<EOF > /etc/docker/daemon.json &&
+{
+     "userland-proxy": false,
+     "experimental": true,
+     "log-driver": "json-file",
+     "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+      }
+}
+EOF
 
 echo Restart docker...
 systemctl restart docker &&
 
 echo Make config directory...
 mkdir /etc/freedmr &&
-chmod 755 /etc/freedmr &&
+mkdir -p /etc/freedmr/acme.sh && 
+mkdir -p /etc/freedmr/certs &&
+chmod -R 755 /etc/freedmr &&
 
 echo make json directory...
 mkdir -p /etc/freedmr/json &&
-
-echo get json files...
-cd /etc/freedmr/json &&
-curl http://www.france-dmr.fr/static/local_subscriber_ids.json -o subscriber_ids.json &&
-curl http://www.france-dmr.fr/static/talkgroup_ids.json -o talkgroup_ids.json &&
-curl http://www.france-dmr.fr/static/rptrs.json -o peer_ids.json &&
-touch /etc/freedmr/json/sub_map.pkl &&
-chmod -R 777 /etc/freedmr/json &&
+chown 54000:54000 /etc/freedmr/json &&
 
 echo Install /etc/freedmr/freedmr.cfg ... 
 cat << EOF > /etc/freedmr/freedmr.cfg
@@ -60,8 +81,10 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: fr_FR
+ANNOUNCEMENT_LANGUAGES:
 SERVER_ID: 0
+DATA_GATEWAY: False
+VALIDATE_SERVER_IDS: True
 
 
 [REPORTS]
@@ -71,32 +94,36 @@ REPORT_PORT: 4321
 REPORT_CLIENTS: *
 
 [LOGGER]
-LOG_FILE: freedmr.log
-LOG_HANDLERS: file-timed
+LOG_FILE: /dev/null
+LOG_HANDLERS: console-timed
 LOG_LEVEL: INFO
 LOG_NAME: FreeDMR
 
 [ALIASES]
-TRY_DOWNLOAD: False
-PATH: ./
+TRY_DOWNLOAD: True
+PATH: ./json/
 PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
-PEER_URL: http://www.france-dmr.fr/static/rptrs.json
-SUBSCRIBER_URL: http://www.france-dmr.fr/static/local_subscriber_ids.json
-TGID_URL: TGID_URL: http://www.france-dmr.fr/static/talkgroup_ids.json
-STALE_DAYS: 7
-LOCAL_SUBSCRIBER_FILE: local_subcriber_ids.json
+PEER_URL: http://www.france-dmr.fr/static/peer_ids.json
+SUBSCRIBER_URL: http://www.france-dmr.fr/static/subscriber_ids.json
+TGID_URL: http://www.france-dmr.fr/static/talkgroup_ids.json
+LOCAL_SUBSCRIBER_FILE: local_subscriber_ids.json
+STALE_DAYS: 1
 SUB_MAP_FILE: sub_map.pkl
+SERVER_ID_URL: http://www.france-dmr.fr/static/server_ids.tsv
+SERVER_ID_FILE: server_ids.tsv
+TOPO_FILE: topography.json
 
-[MYSQL]
-USE_MYSQL: False
-USER: hblink
-PASS: mypassword
-DB: hblink
-SERVER: 127.0.0.1
-PORT: 3306
-TABLE: repeaters
+
+#Control server shared allstar instance via dial / AMI
+[ALLSTAR]
+ENABLED: false
+USER:admin
+PASS: password
+SERVER: asl.example.com
+PORT: 5038
+NODE: 11111
 
 [OBP-TEST]
 MODE: OPENBRIDGE
@@ -123,7 +150,7 @@ MAX_PEERS: 1
 EXPORT_AMBE: False
 IP: 127.0.0.1
 PORT: 54000
-PASSPHRASE: passw0rd
+PASSPHRASE:passw0rd
 GROUP_HANGTIME: 5
 USE_ACL: True
 REG_ACL: DENY:1
@@ -140,6 +167,7 @@ ANNOUNCEMENT_LANGUAGE: fr_FR
 GENERATOR: 100
 ALLOW_UNREG_ID: False
 PROXY_CONTROL: True
+OVERRIDE_IDENT_TG:
 
 [ECHO]
 MODE: PEER
@@ -153,15 +181,15 @@ MASTER_PORT: 54915
 PASSPHRASE: passw0rd
 CALLSIGN: ECHO
 RADIO_ID: 1000001
-RX_FREQ: 0
-TX_FREQ: 0
-TX_POWER: 0
+RX_FREQ: 449000000
+TX_FREQ: 444000000
+TX_POWER: 25
 COLORCODE: 1
-SLOTS: 2
+SLOTS: 1
 LATITUDE: 00.0000
 LONGITUDE: 000.0000
 HEIGHT: 0
-LOCATION: Serveur Acer
+LOCATION: Earth
 DESCRIPTION: ECHO
 URL: www.freedmr.uk
 SOFTWARE_ID: 20170620
@@ -181,31 +209,27 @@ echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': Tr
 echo Set perms on config directory...
 chown -R 54000 /etc/freedmr &&
 
-echo Setup logging...
-mkdir -p /var/log/freedmr &&
-touch /var/log/freedmr/freedmr.log &&
-chown -R 54000 /var/log/freedmr &&
-mkdir -p /var/log/FreeDMRmonitor &&
-touch /var/log/FreeDMRmonitor/lastheard.log &&
-touch /var/log/FreeDMRmonitor/hbmon.log &&
-chown -R 54001 /var/log/FreeDMRmonitor &&
-
 echo Get docker-compose.yml...
 cd /etc/freedmr &&
 curl https://gitlab.hacknix.net/hacknix/FreeDMR/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
-echo Install crontab...
-cat << EOF > /etc/cron.daily/lastheard
-#!/bin/bash
-mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
-/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
-mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
-/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
-EOF
+
 chmod 755 /etc/cron.daily/lastheard
 
+echo Tune network stack...
+cat << EOF > /etc/sysctl.conf &&
+net.core.rmem_default=134217728
+net.core.rmem_max=134217728
+net.core.wmem_max=134217728                       
+net.core.rmem_default=134217728
+net.core.netdev_max_backlog=250000
+net.netfilter.nf_conntrack_udp_timeout=15
+net.netfilter.nf_conntrack_udp_timeout_stream=35
+EOF
+
+/usr/sbin/sysctl -p &&
 
 echo Run FreeDMR container...
 docker-compose up -d
 
-
+echo Read notes in /etc/freedmr/docker-compose.yml to understand how to implement extra functionality.
 echo FreeDMR setup complete!
